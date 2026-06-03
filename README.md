@@ -18,6 +18,14 @@ com.omarea.vtools
 
 ## 更新内容
 
+### v2.0.3
+
+- 修复 `getsockname()` 临时状态残留风险：每次进入 `getsockname` 探针时都会先清理当前线程旧的 pending 记录，避免异常路径留下的旧状态影响后续非目标 fd。
+- 优化 bind rewrite 挂钩回退逻辑：如果 `getsockname` 探针已经挂载成功，但 `bind` 探针不可用，会立即释放已挂载的 `getsockname` 探针，避免无功能探针残留。
+- 缩小运行包内容：`hideport.bpf.o` 仅作为构建中间产物使用，运行时 BPF 对象已经内嵌进 `hideport_loader`，模块 zip 不再打包该文件。
+
+注：Scene `9.3.1` 新版本实测可 `0` 模块通过 Duck Detector（即不启用本模块）。Duck Detector 对 Scene 端口检测的条件记录为 `14731` HTTP + `14754` sidecar，而 Scene `9.3.1` 实际运行态目前只观察到 `14754`。此外，特殊路径 `/dev/cpuset/scene-daemon` 似乎也已在 Scene `9.3.1` 得到解决；目前仅剩 `/dev/{随机命名}/scene_mode_category` 一类路径痕迹，但 Duck Detector 对该路径的检测似乎已经失效。以上为版本观察记录，后续 Scene 或 Duck Detector 更新后需要重新实测。
+
 ### v2.0.2
 
 - 修复 `bind()` 重复绑定指纹：非白名单进程对同一隐藏端口在两个 fd 上 `bind()` 时，旧版会把两个 socket 都改写到不同的临时端口，而 `getsockname()` 对两者都回填隐藏端口，形成「两个 socket 同时绑定同一端口」这种真实内核不可能出现的结果，可被检测器交叉验证识破。现在按 `tgid + 端口` 记录占用，首个 `bind()` 改写并记录占用，占用存活期间同进程对同一隐藏端口的再次 `bind()` 会被拒绝，行为贴近真实内核的 `EADDRINUSE`。`close()` 时释放占用，避免误伤后续合法重绑。
